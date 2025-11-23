@@ -126,7 +126,7 @@ class Tracking:
     def _prepare_worker_nodes_systems_logging_wandb(self, project_name, experiment_name, run_id, config, current_node_ip):
         """
         In multi-node training, we spawn WandbNodeLogger actors on each worker node to capture system metrics like
-        GPU utilization. We use `model="shared"` to aggregate system metrics from all nodes to the same Wandb run.
+        GPU utilization. We use `mode="shared"` to aggregate system metrics from all nodes to the same Wandb run.
         However, with this approach, the systems metrics panels do not appear in the Wandb UI automatically but requires
         us to manually create the panels. The alternative is to create a run for each node and group them by group_name.
         We prefer to keep all nodes metrics to the same run.
