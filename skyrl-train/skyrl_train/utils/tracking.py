@@ -51,7 +51,6 @@ class WandbNodeLogger:
             )
         )
         self.wandb = run
-        logger.info(f"WandbNodeLogger initialized on node {x_label}")
 
 
 # TODO(tgriggs): Test all backends.
@@ -166,6 +165,7 @@ class Tracking:
                         self.remote_loggers.append(logger_actor)
                     except Exception as e:
                         logger.warning(f"Failed to spawn WandbNodeLogger on {node_ip}: {e}")
+                    logger.info(f"WandbNodeLogger initialized on node {f'node-{node_ip}'}")
 
             except Exception as e:
                 logger.warning(f"Failed to setup distributed wandb logging: {e}")
