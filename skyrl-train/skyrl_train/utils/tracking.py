@@ -73,8 +73,8 @@ class Tracking:
             if ray.is_initialized():
                 try:
                     current_node_ip = ray.util.get_node_ip_address()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to get node IP address, defaulting to 'head'. Error: {e}")
 
             run = wandb.init(
                 project=project_name,
@@ -165,7 +165,7 @@ class Tracking:
                         self.remote_loggers.append(logger_actor)
                     except Exception as e:
                         logger.warning(f"Failed to spawn WandbNodeLogger on {node_ip}: {e}")
-                    logger.info(f"WandbNodeLogger initialized on node {f'node-{node_ip}'}")
+                    logger.info(f"WandbNodeLogger initialized on 'node-{node_ip}'")
 
             except Exception as e:
                 logger.warning(f"Failed to setup distributed wandb logging: {e}")
