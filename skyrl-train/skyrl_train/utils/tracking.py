@@ -53,9 +53,6 @@ class WandbNodeLogger:
         self.wandb = run
         logger.info(f"WandbNodeLogger initialized on node {x_label}")
 
-    def finish(self):
-        self.wandb.finish()
-
 
 # TODO(tgriggs): Test all backends.
 class Tracking:
@@ -189,10 +186,6 @@ class Tracking:
         # https://github.com/wandb/wandb/issues/6449
         # TODO (sumanthrh): Check if this is really needed. Trackers like wandb will automatically finish at program exit.
         try:
-            if hasattr(self, "remote_loggers"):
-                for actor in self.remote_loggers:
-                    ray.kill(actor)
-
             if "wandb" in self.logger:
                 self.logger["wandb"].finish(exit_code=0)
             if "swanlab" in self.logger:
