@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from loguru import logger
 from uuid import uuid4
 from skyrl_train.generators.base import GeneratorInterface, GeneratorInput, GeneratorOutput, TrajectoryID
@@ -9,10 +9,10 @@ from skyrl_train.inference_engines.inference_engine_client import InferenceEngin
 from skyrl_train.inference_engines.base import ConversationType
 from omegaconf import DictConfig
 from pathlib import Path
-from sandboxes.models.trial.config import TrialConfig, AgentConfig, TaskConfig, EnvironmentConfig
-from sandboxes.models.environment_type import EnvironmentType
-from sandboxes.models.agent.name import AgentName
-from sandboxes.trial.trial import Trial
+from harbor.models.trial.config import TrialConfig, AgentConfig, TaskConfig, EnvironmentConfig
+from harbor.models.environment_type import EnvironmentType
+from harbor.models.agent.name import AgentName
+from harbor.trial.trial import Trial
 
 # We have N retries for each trial, if one of the rollout (out of n_samples_per_prompt) fails
 # after N attemptes, we skip this prompt altogether.
@@ -26,7 +26,7 @@ class TerminalBenchAgentOutput:
     loss_mask: List[int]
     prompt_ids: List[int]
     trajectory_id: TrajectoryID
-
+    summarization_count: Optional[int] = None
 
 class TerminalBenchGenerator(GeneratorInterface):
     def __init__(
@@ -48,10 +48,17 @@ class TerminalBenchGenerator(GeneratorInterface):
         self.tokenizer = tokenizer
         self.model_name = generator_cfg.model_name
 
-        # TerminalBench config
+        # TerminalBench config. Parse here to ensure everything is passed in.
         self.trials_dir = terminal_bench_cfg.trials_dir
         self.agent_name = terminal_bench_cfg.agent_name
         self.max_episodes = terminal_bench_cfg.max_episodes
+
+        # Optional overrides for the environment
+        self.override_memory_mb = terminal_bench_cfg.get("override_memory_mb")
+        self.override_storage_mb = terminal_bench_cfg.get("override_storage_mb")
+        self.override_cpus = terminal_bench_cfg.get("override_cpus")
+
+        logger.info(f"TerminalBenchGenerator initialized with overrides: memory={self.override_memory_mb}, storage={self.override_storage_mb}, cpus={self.override_cpus}")
 
         if self.generator_cfg.chat_template.name_or_path is not None:
             raise NotImplementedError("TerminalBenchGenerator doesn't support custom chat template")
@@ -94,6 +101,8 @@ class TerminalBenchGenerator(GeneratorInterface):
                 [output.response_ids for output in successful_outputs], 
                 [output.reward for output in successful_outputs],
             )
+            trajectories_summarized = [1 if output.summarization_count > 0 else 0 for output in successful_outputs]
+            rollout_metrics["generate/trajectories_summarized"] = sum(trajectories_summarized)
         else:
             rollout_metrics = {}
         rollout_metrics["generate/num_failed_instances"] = len(failed_instance_ids)
@@ -127,7 +136,12 @@ class TerminalBenchGenerator(GeneratorInterface):
             trial_config = TrialConfig(
                 task=TaskConfig(path=prompt),
                 trials_dir=Path(self.trials_dir),
-                environment=EnvironmentConfig(type=EnvironmentType.DAYTONA),
+                environment=EnvironmentConfig(
+                    type=EnvironmentType.DAYTONA,
+                    override_cpus=self.override_cpus,
+                    override_memory_mb=self.override_memory_mb,
+                    override_storage_mb=self.override_storage_mb,
+                ),
                 agent=AgentConfig(
                     name=AgentName.TERMINUS_2.value,
                     model_name=f"hosted_vllm/{self.model_name}",
@@ -143,7 +157,12 @@ class TerminalBenchGenerator(GeneratorInterface):
             trial_config = TrialConfig(
                 task=TaskConfig(path=prompt),
                 trials_dir=Path(self.trials_dir),
-                environment=EnvironmentConfig(type=EnvironmentType.DAYTONA),
+                environment=EnvironmentConfig(
+                    type=EnvironmentType.DAYTONA,
+                    override_cpus=self.override_cpus,
+                    override_memory_mb=self.override_memory_mb,
+                    override_storage_mb=self.override_storage_mb,
+                ),
                 agent=AgentConfig(
                     name=AgentName.ORACLE,
                     model_name=f"hosted_vllm/{self.model_name}",
@@ -153,7 +172,7 @@ class TerminalBenchGenerator(GeneratorInterface):
             raise ValueError(f"Invalid agent name: {self.agent_name}")
 
         trial = Trial(trial_config)
-        # Run the trial
+        # Run the trial to get `rewards`, `chat_history`, and `summarization_count`
         successful = False
         for i in range(MAX_NUM_RETRIES_PER_TRIAL):
             prefix = f"Trajectory {trajectory_id} attempt {i+1}/{MAX_NUM_RETRIES_PER_TRIAL}"
@@ -163,11 +182,13 @@ class TerminalBenchGenerator(GeneratorInterface):
                 if not results.verifier_result:
                     logger.warning(f"{prefix} failed: Exception info: {results.exception_info}. Results: {results}")
                     continue
-                reward = results.verifier_result.reward
-                logger.info(f"{prefix} successful: Results: {results.agent_result.metadata}")
+
+                reward = results.verifier_result.rewards["reward"]
                 chat_history = results.agent_result.metadata['all_messages']
+                summarization_count = results.agent_result.metadata['summarization_count']
                 if len(chat_history) > 0:
                     successful = True
+                    logger.info(f"{prefix} successful: Results: {results.agent_result.metadata}")
                     break
                 else:
                     logger.warning(f"{prefix} failed: Agent {self.agent_name} did not return a response. Results: {results}")
@@ -224,4 +245,5 @@ class TerminalBenchGenerator(GeneratorInterface):
             loss_mask=loss_mask,
             prompt_ids=prompt_ids,
             trajectory_id=trajectory_id,
+            summarization_count=summarization_count,
         )
