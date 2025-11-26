@@ -60,9 +60,6 @@ class TerminalBenchGenerator(GeneratorInterface):
 
         logger.info(f"TerminalBenchGenerator initialized with overrides: memory={self.override_memory_mb}, storage={self.override_storage_mb}, cpus={self.override_cpus}")
 
-        if self.generator_cfg.chat_template.name_or_path is not None:
-            raise NotImplementedError("TerminalBenchGenerator doesn't support custom chat template")
-
     async def generate(self, input_batch: GeneratorInput) -> GeneratorOutput:
         tasks = []
         for i in range(len(input_batch["prompts"])):
@@ -102,7 +99,9 @@ class TerminalBenchGenerator(GeneratorInterface):
                 [output.reward for output in successful_outputs],
             )
             trajectories_summarized = [1 if output.summarization_count > 0 else 0 for output in successful_outputs]
+            trajectories_truncated = [1 if output.stop_reason == "length" else 0 for output in successful_outputs]
             rollout_metrics["generate/trajectories_summarized"] = sum(trajectories_summarized)
+            rollout_metrics["generate/trajectories_truncated"] = sum(trajectories_truncated)
         else:
             rollout_metrics = {}
         rollout_metrics["generate/num_failed_instances"] = len(failed_instance_ids)
