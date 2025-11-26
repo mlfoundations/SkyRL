@@ -129,16 +129,18 @@ class TerminalBenchGenerator(GeneratorInterface):
         # All LLM requests in this trial will share the same session_id
         session_id = uuid4().hex
 
+        environment_config = EnvironmentConfig(
+            type=EnvironmentType.DAYTONA,
+            override_cpus=self.override_cpus,
+            override_memory_mb=self.override_memory_mb,
+            override_storage_mb=self.override_storage_mb,
+        )
+
         if self.agent_name == "terminus":
             trial_config = TrialConfig(
                 task=TaskConfig(path=prompt),
                 trials_dir=Path(self.trials_dir),
-                environment=EnvironmentConfig(
-                    type=EnvironmentType.DAYTONA,
-                    override_cpus=self.override_cpus,
-                    override_memory_mb=self.override_memory_mb,
-                    override_storage_mb=self.override_storage_mb,
-                ),
+                environment=environment_config,
                 agent=AgentConfig(
                     name=AgentName.TERMINUS_2.value,
                     model_name=f"hosted_vllm/{self.model_name}",
@@ -154,12 +156,7 @@ class TerminalBenchGenerator(GeneratorInterface):
             trial_config = TrialConfig(
                 task=TaskConfig(path=prompt),
                 trials_dir=Path(self.trials_dir),
-                environment=EnvironmentConfig(
-                    type=EnvironmentType.DAYTONA,
-                    override_cpus=self.override_cpus,
-                    override_memory_mb=self.override_memory_mb,
-                    override_storage_mb=self.override_storage_mb,
-                ),
+                environment=environment_config,
                 agent=AgentConfig(
                     name=AgentName.ORACLE,
                     model_name=f"hosted_vllm/{self.model_name}",
@@ -169,8 +166,12 @@ class TerminalBenchGenerator(GeneratorInterface):
             raise ValueError(f"Invalid agent name: {self.agent_name}")
 
         trial = Trial(trial_config)
+
         # Run the trial to get `rewards`, `chat_history`, and `summarization_count`
         successful = False
+        reward = None
+        chat_history = None
+        summarization_count = None
         for i in range(MAX_NUM_RETRIES_PER_TRIAL):
             prefix = f"Trajectory {trajectory_id} attempt {i+1}/{MAX_NUM_RETRIES_PER_TRIAL}"
             results = None
