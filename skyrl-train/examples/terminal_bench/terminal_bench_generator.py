@@ -98,10 +98,8 @@ class TerminalBenchGenerator(GeneratorInterface):
                 [output.response_ids for output in successful_outputs], 
                 [output.reward for output in successful_outputs],
             )
-            trajectories_summarized = [1 if output.summarization_count > 0 else 0 for output in successful_outputs]
-            trajectories_truncated = [1 if output.stop_reason == "length" else 0 for output in successful_outputs]
-            rollout_metrics["generate/trajectories_summarized"] = sum(trajectories_summarized)
-            rollout_metrics["generate/trajectories_truncated"] = sum(trajectories_truncated)
+            rollout_metrics["generate/trajectories_summarized"] = sum(1 for output in successful_outputs if output.summarization_count > 0)
+            rollout_metrics["generate/trajectories_truncated"] = sum(1 for output in successful_outputs if output.stop_reason == "length")
         else:
             rollout_metrics = {}
         rollout_metrics["generate/num_failed_instances"] = len(failed_instance_ids)
